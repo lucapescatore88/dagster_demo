@@ -3,10 +3,11 @@ name = "pipeline_simple"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-    "dagster>=1.8",
-    "dagster-webserver>=1.8",
-    "dagster-dbt>=0.24",
-    "dbt-snowflake>=1.8",
+    "dagster>=1.10",
+    "dagster-webserver>=1.10",
+    "dagster-postgres>=0.26",
+    "dagster-dbt>=0.26",
+    "dbt-snowflake>=1.9",
     "pandas>=2.0",
     "pyarrow>=15.0",
     "snowflake-connector-python>=3.7",

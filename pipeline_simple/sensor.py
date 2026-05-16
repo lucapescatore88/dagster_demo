@@ -36,7 +36,7 @@ def make_new_table_sensor(manifest_path: Path, job):
 
         run_requests = []
         for t in sorted(new):
-            _source_a, stage_a, landing_a = build_assets_for_table(t, current[t])
+            _source_a, stage_a, landing_a, _checks = build_assets_for_table(t, current[t])
             run_requests.append(
                 RunRequest(
                     run_key=f"new-table::{t}",

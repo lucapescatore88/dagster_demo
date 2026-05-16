@@ -1,20 +1,26 @@
-"""Three assets per manifest row:
+"""Three assets + two checks per manifest row:
 
-    {table}__source   →   {table}__stage   →   {table}__landing
+    {table}__source  →  {table}__stage  →  {table}__landing
+                              ↓                    ↓
+                     stage_file_exists    rowcount_and_max_id
+                       (asset check)        (asset check)
 
   - source:  external source — no compute, lineage only
-  - stage:   generate random rows, write parquet, PUT to internal stage,
-             return the stage path
-  - landing: COPY INTO from the staged file, full replace
+  - stage:   REMOVE old stage files, generate random rows, PUT parquet
+  - landing: COPY INTO from staged parquet, full replace
 """
 
 import random
 import tempfile
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
 from dagster import (
+    AssetCheckResult,
+    AssetCheckSeverity,
     AssetExecutionContext,
     AssetIn,
     AssetKey,
@@ -23,9 +29,12 @@ from dagster import (
     Output,
     SourceAsset,
     asset,
+    asset_check,
 )
 
 from pipeline_simple.snowflake_resource import SnowflakeResource
+
+_STAGE_MAX_AGE_SECONDS = 600  # file must be newer than 10 min
 
 
 def _random_rows(table: str, n: int = 50) -> list[dict]:
@@ -44,11 +53,12 @@ def _random_rows(table: str, n: int = 50) -> list[dict]:
 def build_assets_for_table(
     table: str,
     database: str = "sources",
-) -> Tuple[SourceAsset, AssetsDefinition, AssetsDefinition]:
-    """Return (source_asset, stage_asset, landing_asset) for one table."""
+) -> Tuple[SourceAsset, AssetsDefinition, AssetsDefinition, list]:
+    """Return (source_asset, stage_asset, landing_asset, [checks]) for one table."""
 
     source_key = AssetKey([f"{table}__source"])
     stage_key = AssetKey([f"{table}__stage"])
+    landing_key = AssetKey([f"{table}__landing"])
 
     source_asset = SourceAsset(
         key=source_key,
@@ -82,15 +92,12 @@ def build_assets_for_table(
             stage_path = snowflake.stage_file(
                 table=table.upper(),
                 local_parquet=local_path,
+                database=database,
             )
         finally:
             Path(local_path).unlink(missing_ok=True)
 
-        # Return both the stage path and the column list so landing doesn't
-        # need to re-read the parquet. Dagster passes this dict as input
-        # to the landing asset.
         result = {"stage_path": stage_path, "columns": list(df.columns)}
-
         context.log.info(f"Staged {len(df)} rows at {stage_path}")
         return Output(
             value=result,
@@ -128,13 +135,65 @@ def build_assets_for_table(
             },
         )
 
-    return source_asset, stage_asset, landing_asset
+    # ── Asset checks ────────────────────────────────────────────────────────
+
+    @asset_check(
+        asset=stage_key,
+        name="stage_file_exists",
+        description="Verify a file was uploaded to the stage within the last 10 minutes.",
+    )
+    def stage_file_check(snowflake: SnowflakeResource) -> AssetCheckResult:
+        files = snowflake.list_stage_files(database=database, table=table.upper())
+        if not files:
+            return AssetCheckResult(
+                passed=False,
+                severity=AssetCheckSeverity.ERROR,
+                description="No file found in stage.",
+            )
+        try:
+            last_modified = parsedate_to_datetime(files[0]["last_modified"])
+            age = (datetime.now(timezone.utc) - last_modified).total_seconds()
+        except Exception:
+            age = float("inf")
+
+        passed = age < _STAGE_MAX_AGE_SECONDS
+        return AssetCheckResult(
+            passed=passed,
+            severity=AssetCheckSeverity.ERROR,
+            description=f"File age {age:.0f}s (limit {_STAGE_MAX_AGE_SECONDS}s).",
+            metadata={
+                "file": MetadataValue.text(files[0]["name"]),
+                "age_seconds": MetadataValue.float(age),
+            },
+        )
+
+    @asset_check(
+        asset=landing_key,
+        name="rowcount_and_max_id",
+        description="Verify the landing table has rows and a valid numeric max ID.",
+    )
+    def landing_stats_check(snowflake: SnowflakeResource) -> AssetCheckResult:
+        count, max_id = snowflake.get_landing_stats(table=table.upper())
+        passed = count > 0 and max_id is not None
+        return AssetCheckResult(
+            passed=passed,
+            severity=AssetCheckSeverity.ERROR,
+            description=f"{count} rows, max ID = {max_id}.",
+            metadata={
+                "row_count": MetadataValue.int(count),
+                "max_id": MetadataValue.int(max_id or 0),
+            },
+        )
+
+    return source_asset, stage_asset, landing_asset, [stage_file_check, landing_stats_check]
 
 
-def build_all_assets(manifest: list[tuple[str, str]]) -> list:
-    """Flatten (source, stage, landing) triples into a single list."""
-    out: list = []
+def build_all_assets(manifest: list[tuple[str, str]]) -> tuple[list, list]:
+    """Return (assets, checks) for the full manifest."""
+    assets: list = []
+    checks: list = []
     for table, database in manifest:
-        source, stage, landing = build_assets_for_table(table, database)
-        out.extend([source, stage, landing])
-    return out
+        source, stage, landing, table_checks = build_assets_for_table(table, database)
+        assets.extend([source, stage, landing])
+        checks.extend(table_checks)
+    return assets, checks

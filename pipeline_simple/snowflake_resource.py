@@ -85,18 +85,46 @@ class SnowflakeResource(ConfigurableResource):
         rows = self.execute(f"SELECT COUNT(*) FROM {fq_table}")
         return rows[0][0] if rows else 0
     
-    def stage_file(self, table: str, local_parquet: str) -> str:
-        """PUT local parquet onto the internal stage. Returns the stage path."""
+    def stage_file(self, table: str, local_parquet: str, database: str) -> str:
+        """REMOVE old files, then PUT local parquet.
+
+        Stage path: @STAGE/{database}/{table}/{filename}
+        Returns the full stage path of the uploaded file.
+        """
         self.ensure_stage()
         local = Path(local_parquet).resolve()
         fq_stage = f"@{self.database}.{self.target_schema}.{self.stage}"
-        stage_path = f"{fq_stage}/{table}/{local.name}"
+        stage_folder = f"{fq_stage}/{database}/{table}"
+        stage_path = f"{stage_folder}/{local.name}"
+
+        # Empty the folder before staging so stale files never linger.
+        self.execute(f"REMOVE {stage_folder}/")
 
         self.execute(
-            f"PUT 'file://{local.as_posix()}' '{fq_stage}/{table}/' "
+            f"PUT 'file://{local.as_posix()}' '{stage_folder}/' "
             f"AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
         )
         return stage_path
+
+    def list_stage_files(self, database: str, table: str) -> list[dict]:
+        """Return metadata for every file under @STAGE/{database}/{table}/."""
+        fq_stage = f"@{self.database}.{self.target_schema}.{self.stage}"
+        rows = self.execute(f"LIST {fq_stage}/{database}/{table}/")
+        # LIST columns: name, size, md5, last_modified (RFC-2822 string)
+        return [
+            {"name": r[0], "size": r[1], "last_modified": r[3]}
+            for r in (rows or [])
+        ]
+
+    def get_landing_stats(self, table: str) -> tuple[int, int | None]:
+        """Return (row_count, max_id) for the landing table."""
+        fq_table = f"{self.database}.{self.target_schema}.{table}"
+        rows = self.execute(
+            f"SELECT COUNT(*), MAX(TRY_TO_NUMBER(ID)) FROM {fq_table}"
+        )
+        if rows:
+            return int(rows[0][0]), (int(rows[0][1]) if rows[0][1] is not None else None)
+        return 0, None
 
     def load_from_stage(self, table: str, stage_path: str, columns: list[str]) -> int:
         """CREATE OR REPLACE TABLE and COPY INTO from the staged file."""

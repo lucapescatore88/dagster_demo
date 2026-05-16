@@ -1,0 +1,19 @@
+# Dagster instance configuration.
+# Set DAGSTER_HOME to this project's root directory:
+#   export DAGSTER_HOME=$(pwd)   # run from dagster_demo/
+#
+# Credentials are read from .env in this same directory.
+
+storage:
+  postgres:
+    postgres_db:
+      hostname:
+        env: DAGSTER_PG_HOST
+      username:
+        env: DAGSTER_PG_USER
+      password:
+        env: DAGSTER_PG_PASSWORD
+      db_name:
+        env: DAGSTER_PG_DB
+      port:
+        env: DAGSTER_PG_PORT

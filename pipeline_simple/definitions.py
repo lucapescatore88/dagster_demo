@@ -28,7 +28,7 @@ from pipeline_simple.reload_sensor import make_reload_sensor
 MANIFEST_PATH = Path(__file__).parent.parent / "config" / "tables.csv"
 
 manifest = load_table_manifest(MANIFEST_PATH)
-all_assets = build_all_assets(manifest)
+all_assets, all_checks = build_all_assets(manifest)
 
 # Ensure the dbt manifest is up-to-date every time the code location loads.
 # `dbt parse` is fast (no DB connection needed) and keeps the asset graph in sync.
@@ -58,6 +58,7 @@ reload_sensor = make_reload_sensor(MANIFEST_PATH)
 
 defs = Definitions(
     assets=[*all_assets, dbt_project_assets],
+    asset_checks=all_checks,
     jobs=[load_job],
     schedules=[every_two_minutes],
     sensors=[new_table_sensor, reload_sensor],
