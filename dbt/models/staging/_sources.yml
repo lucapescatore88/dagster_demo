@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    schema: BRONZE
+    tables:
+      - name: customers
+      - name: orders
+      - name: products
+      - name: customer_segments
+      - name: product_categories
+      - name: parts
+      - name: employee

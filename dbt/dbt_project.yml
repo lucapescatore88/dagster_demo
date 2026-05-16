@@ -1,0 +1,17 @@
+name: demo_dbt
+version: "1.0.0"
+config-version: 2
+
+profile: demo_dbt
+
+model-paths: ["models"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  demo_dbt:
+    staging:
+      +materialized: view
+      +schema: SILVER
+    marts:
+      +materialized: table
+      +schema: GOLD
