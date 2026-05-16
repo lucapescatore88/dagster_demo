@@ -1,0 +1,87 @@
+"""One asset per manifest row.
+
+Each asset:
+  1. Generates random rows (no real source DB — this IS the demo).
+  2. Writes a local parquet to /tmp.
+  3. PUTs to Snowflake internal stage and COPY INTO with full replace.
+
+NOTE: don't add `from __future__ import annotations` — Dagster runtime-checks
+the type of the `context` parameter.
+"""
+
+import random
+import tempfile
+from pathlib import Path
+
+import pandas as pd
+from dagster import (
+    AssetExecutionContext,
+    AssetsDefinition,
+    MetadataValue,
+    Output,
+    asset,
+)
+
+from pipeline_simple.snowflake_resource import SnowflakeResource
+
+
+def _random_rows(table: str, n: int = 50) -> list[dict]:
+    """Generate believable-looking random rows for any table name."""
+    rng = random.Random()  # fresh each run — that's the point of "random"
+    return [
+        {
+            "id": rng.randint(1, 10**9),
+            "name": f"{table}_{i:04d}",
+            "value": round(rng.uniform(1, 1000), 2),
+            "status": rng.choice(["active", "pending", "closed"]),
+        }
+        for i in range(n)
+    ]
+
+
+def build_asset_for_table(table: str) -> AssetsDefinition:
+    """Build a single asset for one table name."""
+
+    @asset(
+        name=table,
+        group_name="bronze",
+        compute_kind="snowflake",
+        description=f"Full-load random data into BRONZE.{table.upper()}",
+    )
+    def _asset(
+        context: AssetExecutionContext,
+        snowflake: SnowflakeResource,
+    ) -> Output[int]:
+        rows = _random_rows(table)
+        df = pd.DataFrame(rows)
+
+        # Write parquet to a temp file. Cleaned up automatically.
+        with tempfile.NamedTemporaryFile(
+            suffix=f"_{table}.parquet", delete=False
+        ) as tmp:
+            df.to_parquet(tmp.name, index=False)
+            local_path = tmp.name
+
+        try:
+            row_count = snowflake.load_full_replace(
+                table=table.upper(),
+                local_parquet=local_path,
+                columns=list(df.columns),
+            )
+        finally:
+            Path(local_path).unlink(missing_ok=True)
+
+        context.log.info(f"Loaded {row_count} rows into BRONZE.{table.upper()}")
+        return Output(
+            value=row_count,
+            metadata={
+                "row_count": row_count,
+                "preview": MetadataValue.md(df.head().to_markdown(index=False)),
+            },
+        )
+
+    return _asset
+
+
+def build_all_assets(tables: list[str]) -> list[AssetsDefinition]:
+    return [build_asset_for_table(t) for t in tables]
