@@ -12,21 +12,21 @@ from dagster import (
 )
 
 from pipeline_simple.assets import build_assets_for_table
-from pipeline_simple.manifest import load_table_names
+from pipeline_simple.manifest import load_table_manifest
 
 
 def make_new_table_sensor(manifest_path: Path, job):
     @sensor(
         name="new_table_sensor",
-        job=job,                                       # <-- the fix
+        job=job,
         minimum_interval_seconds=30,
         default_status=DefaultSensorStatus.STOPPED,
         description="Tick every 30s. New tables in the CSV get one immediate run.",
     )
     def _sensor(context: SensorEvaluationContext) -> SensorResult:
-        current = set(load_table_names(manifest_path))
+        current = {t: db for t, db in load_table_manifest(manifest_path)}
         seen = set(json.loads(context.cursor)) if context.cursor else set()
-        new = current - seen
+        new = set(current) - seen
 
         if not new:
             return SensorResult(
@@ -36,7 +36,7 @@ def make_new_table_sensor(manifest_path: Path, job):
 
         run_requests = []
         for t in sorted(new):
-            stage_a, landing_a = build_assets_for_table(t)
+            _source_a, stage_a, landing_a = build_assets_for_table(t, current[t])
             run_requests.append(
                 RunRequest(
                     run_key=f"new-table::{t}",

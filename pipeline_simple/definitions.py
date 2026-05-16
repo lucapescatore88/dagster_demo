@@ -17,15 +17,15 @@ from dagster import (
 )
 
 from pipeline_simple.assets import build_all_assets
-from pipeline_simple.manifest import load_table_names
+from pipeline_simple.manifest import load_table_manifest, load_table_names
 from pipeline_simple.sensor import make_new_table_sensor
 from pipeline_simple.snowflake_resource import SnowflakeResource
 from pipeline_simple.reload_sensor import make_reload_sensor
 
 MANIFEST_PATH = Path(__file__).parent.parent / "config" / "tables.csv"
 
-tables = load_table_names(MANIFEST_PATH)
-all_assets = build_all_assets(tables)
+manifest = load_table_manifest(MANIFEST_PATH)
+all_assets = build_all_assets(manifest)
 
 # One job covering every asset currently in the manifest. The job's asset
 # selection is computed at definitions-load time, so when you add a row to

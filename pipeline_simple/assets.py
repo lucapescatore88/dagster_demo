@@ -1,7 +1,8 @@
-"""Two assets per manifest row:
+"""Three assets per manifest row:
 
-    {table}__stage   →   {table}__landing
+    {table}__source   →   {table}__stage   →   {table}__landing
 
+  - source:  external source — no compute, lineage only
   - stage:   generate random rows, write parquet, PUT to internal stage,
              return the stage path
   - landing: COPY INTO from the staged file, full replace
@@ -20,6 +21,7 @@ from dagster import (
     AssetsDefinition,
     MetadataValue,
     Output,
+    SourceAsset,
     asset,
 )
 
@@ -39,15 +41,28 @@ def _random_rows(table: str, n: int = 50) -> list[dict]:
     ]
 
 
-def build_assets_for_table(table: str) -> Tuple[AssetsDefinition, AssetsDefinition]:
-    """Return (stage_asset, landing_asset) for one table."""
+def build_assets_for_table(
+    table: str,
+    database: str = "sources",
+) -> Tuple[SourceAsset, AssetsDefinition, AssetsDefinition]:
+    """Return (source_asset, stage_asset, landing_asset) for one table."""
 
+    source_key = AssetKey([f"{table}__source"])
     stage_key = AssetKey([f"{table}__stage"])
+
+    source_asset = SourceAsset(
+        key=source_key,
+        group_name="sources",
+        tags={"database": database},
+        description=f"External source data for {table} in {database}. No compute — lineage only.",
+    )
 
     @asset(
         name=f"{table}__stage",
         group_name="staging",
         compute_kind="snowflake_stage",
+        deps=[source_key],
+        tags={"database": database},
         description=f"Generate random rows for {table} and PUT to Snowflake internal stage.",
     )
     def stage_asset(
@@ -91,6 +106,7 @@ def build_assets_for_table(table: str) -> Tuple[AssetsDefinition, AssetsDefiniti
         group_name="landing",
         compute_kind="snowflake_table",
         ins={"staged": AssetIn(stage_key)},
+        tags={"database": database},
         description=f"Full-replace BRONZE.{table.upper()} from the staged parquet.",
     )
     def landing_asset(
@@ -112,13 +128,13 @@ def build_assets_for_table(table: str) -> Tuple[AssetsDefinition, AssetsDefiniti
             },
         )
 
-    return stage_asset, landing_asset
+    return source_asset, stage_asset, landing_asset
 
 
-def build_all_assets(tables: list[str]) -> list[AssetsDefinition]:
-    """Flatten (stage, landing) pairs into a single list."""
-    out: list[AssetsDefinition] = []
-    for t in tables:
-        stage, landing = build_assets_for_table(t)
-        out.extend([stage, landing])
+def build_all_assets(manifest: list[tuple[str, str]]) -> list:
+    """Flatten (source, stage, landing) triples into a single list."""
+    out: list = []
+    for table, database in manifest:
+        source, stage, landing = build_assets_for_table(table, database)
+        out.extend([source, stage, landing])
     return out

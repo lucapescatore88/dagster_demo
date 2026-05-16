@@ -49,6 +49,7 @@ GRANT ROLE PIPELINE_LOADER_ROLE TO USER PIPELINE_LOADER;
 ## Run it
 
 ```bash
+py -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env       # fill in real values
 dagster dev
