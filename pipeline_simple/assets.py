@@ -52,17 +52,17 @@ def build_assets_for_table(
 
     source_asset = SourceAsset(
         key=source_key,
-        group_name="sources",
-        tags={"database": database},
+        group_name=database,
+        tags={"asset_type": "source"},
         description=f"External source data for {table} in {database}. No compute — lineage only.",
     )
 
     @asset(
         name=f"{table}__stage",
-        group_name="staging",
+        group_name=database,
         compute_kind="snowflake_stage",
         deps=[source_key],
-        tags={"database": database},
+        tags={"asset_type": "staging"},
         description=f"Generate random rows for {table} and PUT to Snowflake internal stage.",
     )
     def stage_asset(
@@ -103,10 +103,10 @@ def build_assets_for_table(
 
     @asset(
         name=f"{table}__landing",
-        group_name="landing",
+        group_name=database,
         compute_kind="snowflake_table",
         ins={"staged": AssetIn(stage_key)},
-        tags={"database": database},
+        tags={"asset_type": "landing"},
         description=f"Full-replace BRONZE.{table.upper()} from the staged parquet.",
     )
     def landing_asset(
