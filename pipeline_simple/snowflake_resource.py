@@ -70,7 +70,7 @@ class SnowflakeResource(ConfigurableResource):
 
         # 2. CREATE OR REPLACE the target table with VARCHAR columns.
         #    Full-replace semantics: every run rebuilds the table from scratch.
-        col_defs = ", ".join(f'"{c}" VARCHAR' for c in columns)
+        col_defs = ", ".join(f'{c.upper()} VARCHAR' for c in columns)
         self.execute(f"CREATE OR REPLACE TABLE {fq_table} ({col_defs})")
 
         # 3. COPY INTO from the staged file.
@@ -102,7 +102,7 @@ class SnowflakeResource(ConfigurableResource):
         """CREATE OR REPLACE TABLE and COPY INTO from the staged file."""
         fq_table = f"{self.database}.{self.target_schema}.{table}"
 
-        col_defs = ", ".join(f'"{c}" VARCHAR' for c in columns)
+        col_defs = ", ".join(f'{c.upper()} VARCHAR' for c in columns)
         self.execute(f"CREATE OR REPLACE TABLE {fq_table} ({col_defs})")
 
         self.execute(f"""
