@@ -1,6 +1,5 @@
 *.egg-info
-__pycache__
-*/__pycache__/*
+**/__pycache__/
 .venv*
 .env
 # Dagster runtime artifacts written to DAGSTER_HOME (project root)
@@ -8,3 +7,8 @@ storage/
 logs/
 schedules/
 runs/
+history/
+.nux/
+.telemetry/
+.logs_queue/
+.tmp_dagster_home*/
