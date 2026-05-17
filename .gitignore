@@ -1,6 +1,6 @@
 *.egg-info
 __pycache__
-*/__pycache__
+*/__pycache__/*
 .venv*
 .env
 # Dagster runtime artifacts written to DAGSTER_HOME (project root)

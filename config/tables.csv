@@ -1,8 +1,8 @@
-table_name,database
-customers,crm_db
-orders,crm_db
-products,erp_db
-customer_segments,crm_db
-product_categories,erp_db
-parts,erp_db
-employee,hr_db
+table_name,database,load_mode
+customers,crm_db,incremental
+orders,crm_db,incremental
+products,erp_db,full
+customer_segments,crm_db,full
+product_categories,erp_db,full
+parts,erp_db,incremental
+employee,hr_db,full

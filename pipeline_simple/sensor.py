@@ -24,7 +24,7 @@ def make_new_table_sensor(manifest_path: Path, job):
         description="Tick every 30s. New tables in the CSV get one immediate run.",
     )
     def _sensor(context: SensorEvaluationContext) -> SensorResult:
-        current = {t: db for t, db in load_table_manifest(manifest_path)}
+        current = {cfg.table: cfg for cfg in load_table_manifest(manifest_path)}
         seen = set(json.loads(context.cursor)) if context.cursor else set()
         new = set(current) - seen
 
@@ -36,7 +36,7 @@ def make_new_table_sensor(manifest_path: Path, job):
 
         run_requests = []
         for t in sorted(new):
-            _source_a, stage_a, landing_a, _checks = build_assets_for_table(t, current[t])
+            _source_a, stage_a, landing_a, _checks = build_assets_for_table(current[t])
             run_requests.append(
                 RunRequest(
                     run_key=f"new-table::{t}",

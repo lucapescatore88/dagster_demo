@@ -20,7 +20,7 @@ from dagster_dbt import DbtCliResource
 
 from pipeline_simple.assets import build_all_assets
 from pipeline_simple.dbt_assets import DBT_PROJECT_DIR, dbt_project_assets
-from pipeline_simple.manifest import load_table_manifest, load_table_names
+from pipeline_simple.manifest import load_table_manifest, load_table_names  # noqa: F401
 from pipeline_simple.sensor import make_new_table_sensor
 from pipeline_simple.snowflake_resource import SnowflakeResource
 from pipeline_simple.reload_sensor import make_reload_sensor

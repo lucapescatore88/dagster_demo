@@ -4,6 +4,12 @@
 #
 # Credentials are read from .env in this same directory.
 
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 20
+
 storage:
   postgres:
     postgres_db:
