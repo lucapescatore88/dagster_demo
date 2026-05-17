@@ -21,12 +21,15 @@ from dagster_dbt import DagsterDbtTranslator, DbtCliResource, dbt_assets
 DBT_PROJECT_DIR = Path(__file__).parent.parent / "dbt"
 DBT_MANIFEST_PATH = DBT_PROJECT_DIR / "target" / "manifest.json"
 
-# `@dbt_assets` reads manifest.json at import time, so we must generate it
-# before the decorator runs. `dbt parse` is fast — no DB connection required.
-DbtCliResource(
-    project_dir=os.fspath(DBT_PROJECT_DIR),
-    profiles_dir=os.fspath(DBT_PROJECT_DIR),
-).cli(["parse"]).wait()
+# Generate manifest.json only when it doesn't already exist.
+# Running dbt parse at every import is too slow for the gRPC code-server
+# heartbeat timeout; generate it once (e.g. during `dagster dev` startup or
+# CI) and let Dagster reload use the cached file.
+if not DBT_MANIFEST_PATH.exists():
+    DbtCliResource(
+        project_dir=os.fspath(DBT_PROJECT_DIR),
+        profiles_dir=os.fspath(DBT_PROJECT_DIR),
+    ).cli(["parse"]).wait()
 
 
 class _LandingSourceTranslator(DagsterDbtTranslator):
